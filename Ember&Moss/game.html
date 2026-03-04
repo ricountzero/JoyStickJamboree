@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>🌿 FireJump</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+<script src="models.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: #060e04;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: 'Press Start 2P', monospace;
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  /* ── HUD overlay ── */
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    pointer-events: none;
+    z-index: 20;
+  }
+  .hud-stat {
+    color: #fff;
+    font-size: clamp(7px, 2vw, 11px);
+    text-shadow: 2px 2px 0 #000;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .hud-stat span { color: #7ec83a; }
+
+  /* ── Touch controls — hidden by default, shown only on touch devices ── */
+  #touch-controls {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 150px;
+    display: none;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0 20px 20px;
+    z-index: 30;
+    pointer-events: none;
+  }
+  body.is-touch #touch-controls {
+    display: flex;
+  }
+
+  .btn-group {
+    display: flex;
+    gap: 12px;
+    pointer-events: all;
+  }
+
+  .ctrl-btn {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.10);
+    border: 2.5px solid rgba(255,255,255,0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    user-select: none;
+    transition: background 0.07s, transform 0.07s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .ctrl-btn.pressed {
+    background: rgba(126, 200, 58, 0.32);
+    border-color: rgba(126, 200, 58, 0.65);
+    transform: scale(0.90);
+  }
+
+  .jump-btn {
+    width: 82px;
+    height: 82px;
+    background: rgba(126, 200, 58, 0.16);
+    border-color: rgba(126, 200, 58, 0.42);
+    font-size: 32px;
+  }
+
+  /* ── Portrait support ── */
+  @media (orientation: portrait) {
+    #touch-controls {
+      height: 180px;
+      padding: 0 16px 24px;
+    }
+    .ctrl-btn { width: 80px; height: 80px; font-size: 30px; }
+    .jump-btn  { width: 96px; height: 96px; font-size: 38px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <div id="hud">
+    <div class="hud-stat">🌿 <span id="score-display">00000</span></div>
+    <div class="hud-stat">❤️ <span id="lives-display">3</span></div>
+    <div class="hud-stat">LV <span id="level-display">1</span></div>
+  </div>
+
+  <div id="touch-controls">
+    <div class="btn-group">
+      <div class="ctrl-btn" id="btn-left">◀</div>
+      <div class="ctrl-btn" id="btn-right">▶</div>
+    </div>
+    <div class="btn-group">
+      <div class="ctrl-btn jump-btn" id="btn-jump">🌿</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const scoreEl = document.getElementById('score-display');
+const livesEl = document.getElementById('lives-display');
+const levelEl = document.getElementById('level-display');
+
+// ── Touch state ───────────────────────────────────────────────────────────────
+const touch = { left: false, right: false, jump: false };
+let lastJumpState = false;
+
+function jumpJustPressed() {
+  const j = touch.jump && !lastJumpState;
+  lastJumpState = touch.jump;
+  return j;
+}
+
+function setupBtn(id, key) {
+  const el = document.getElementById(id);
+  const on  = (e) => { e.preventDefault(); touch[key] = true;  el.classList.add('pressed'); };
+  const off = (e) => { e.preventDefault(); touch[key] = false; el.classList.remove('pressed'); };
+  el.addEventListener('touchstart',  on,  { passive: false });
+  el.addEventListener('touchend',    off, { passive: false });
+  el.addEventListener('touchcancel', off, { passive: false });
+  el.addEventListener('mousedown',   on);
+  el.addEventListener('mouseup',     off);
+  el.addEventListener('mouseleave',  off);
+}
+setupBtn('btn-left',  'left');
+setupBtn('btn-right', 'right');
+setupBtn('btn-jump',  'jump');
+
+// ── GAME SCENE ────────────────────────────────────────────────────────────────
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+
+  create() {
+    this.score=0; this.lives=3; this.level=1;
+    this.jumpsLeft=2; this.isInvincible=true; // grace period on spawn
+    this.gameOver=false; this.levelComplete=false;
+    lastJumpState=false;
+    // Remove invincibility after a short grace period
+    this.time.delayedCall(400, () => { this.isInvincible = false; });
+
+    const W=BASE_W, H=BASE_H, WORLD_W=3200, groundY=H-20;
+
+    makePlayerTextures(this);
+    makeFireTextures(this);
+    makeGroundTexture(this);
+    makePlatformTexture(this);
+    makeSkyTexture(this);
+    makeSwampTexture(this);
+    makeFernTexture(this);
+    makeSparkTexture(this);
+    makeMoonTexture(this);
+
+    // BG
+    this.add.image(0,0,'sky').setOrigin(0).setScrollFactor(0);
+
+    // Moon — fixed in sky, slow glow pulse
+    const moonImg = this.add.image(660, 72, 'moon').setScrollFactor(0).setDepth(DEPTH.MOON);
+    this.tweens.add({ targets: moonImg, alpha: 0.80, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+    // Parallax trees
+    const treeMid = this.add.graphics().setScrollFactor(0.3);
+    treeMid.fillStyle(0x1e4a14);
+    for (let x=0;x<WORLD_W*.35;x+=70) {
+      const h=130+Math.sin(x*.04)*40;
+      treeMid.fillRect(x+18,H-h,10,h);
+      treeMid.fillTriangle(x+23,H-h-55,x,H-h+10,x+46,H-h+10);
+      treeMid.fillTriangle(x+23,H-h-75,x+5,H-h-20,x+41,H-h-20);
+      treeMid.fillTriangle(x+23,H-h-90,x+10,H-h-40,x+36,H-h-40);
+    }
+    const treeClose = this.add.graphics().setScrollFactor(0.6);
+    treeClose.fillStyle(0x2a6e18);
+    for (let x=30;x<WORLD_W*.65;x+=90) {
+      const h=160+Math.sin(x*.03+2)*50;
+      treeClose.fillRect(x+20,H-h,12,h);
+      treeClose.fillTriangle(x+26,H-h-65,x-5,H-h+15,x+57,H-h+15);
+      treeClose.fillTriangle(x+26,H-h-90,x+4,H-h-15,x+48,H-h-15);
+      treeClose.fillTriangle(x+26,H-h-108,x+10,H-h-38,x+42,H-h-38);
+    }
+
+    this.physics.world.setBounds(0, 0, WORLD_W, H + 100);
+    this.cameras.main.setBounds(0, 0, WORLD_W, H);
+
+    // Ground — no gaps, fully solid floor
+    this.platforms = this.physics.add.staticGroup();
+    for (let x=0;x<WORLD_W;x+=32) {
+      this.platforms.create(x+16,groundY,'ground').setOrigin(0.5,0).refreshBody();
+    }
+
+    // Swamp sections — visual swamp strips + physics hazard zones on the ground surface
+    const swampZones = SWAMP_ZONES;
+    this.swampHazards = this.physics.add.staticGroup();
+    swampZones.forEach(([x1, x2]) => {
+      const cx = (x1+x2)/2, sw = x2-x1;
+      // Visual swamp patch drawn on top of ground
+      const sg = this.add.graphics().setDepth(DEPTH.SWAMP);
+      // Dark murky base
+      sg.fillStyle(0x1a3a0e); sg.fillRect(x1, groundY, sw, 20);
+      // Algae patches
+      sg.fillStyle(0x3a6a1a);
+      for (let i=0;i<8;i++) sg.fillRect(x1+Math.random()*sw, groundY+Math.random()*14, 12+Math.random()*20, 5);
+      sg.fillStyle(0x5a9a28);
+      for (let i=0;i<5;i++) sg.fillRect(x1+Math.random()*sw, groundY+Math.random()*8, 6+Math.random()*12, 3);
+      // Hazard physics body
+      const hz = this.swampHazards.create(cx, groundY+4, null);
+      hz.setVisible(false).setSize(sw, 16).refreshBody();
+    });
+    [[200,310,4],[380,240,3],[560,310,4],[760,200,3],[900,290,5],[1080,230,3],
+     [1200,310,4],[1350,220,3],[1520,290,4],[1700,200,3],[1860,270,5],[2020,200,3],
+     [2200,310,4],[2360,240,3],[2520,300,4],[2700,200,3],[2900,260,5],[3050,200,4]
+    ].forEach(([px,py,tiles])=>{
+      for (let t=0;t<tiles;t++)
+        this.platforms.create(px+t*32+16,py,'platform').setOrigin(0.5,0).refreshBody();
+    });
+
+    // Swamp — sits just below the visible ground, triggered when player falls into gaps
+    this.swamp = this.physics.add.staticImage(WORLD_W/2, H + 40, 'lava').setOrigin(0.5, 0.5);
+    this.swamp.setDisplaySize(WORLD_W, 80);
+    this.swamp.refreshBody();
+
+    // Player
+    this.player = this.physics.add.sprite(80,groundY-28,'player_0');
+    this.player.setBounce(0.1).setCollideWorldBounds(true).setGravityY(200).setSize(20,26).setOffset(2,2);
+    this.player.setDepth(DEPTH.PLAYER);
+    this.anims.create({ key:'walk', frames:[{key:'player_0'},{key:'player_1'},{key:'player_2'},{key:'player_3'}], frameRate:8, repeat:-1 });
+    this.anims.create({ key:'idle', frames:[{key:'player_0'}], frameRate:1, repeat:-1 });
+
+    // Fires — skip positions that overlap swamp zones
+    this.fires = this.physics.add.group();
+    this.anims.create({ key:'burn', frames: Array.from({length:8},(_,i)=>({key:`fire_${i}`})), frameRate:12, repeat:-1 });
+    const swampRanges = swampZones.map(([x1,x2]) => [x1-20, x2+20]);
+    [300,500,700,850,1050,1150,1400,1600,1750,1900,2100,2300,2500,2700,2850,3000,3100].forEach(fx=>{
+      const inSwamp = swampRanges.some(([a,b]) => fx >= a && fx <= b);
+      if (inSwamp) return;
+      const fire=this.fires.create(fx, groundY-8, 'fire_0');
+      fire.setImmovable(true); fire.body.allowGravity=false;
+      fire.play('burn'); fire.setSize(18, 38).setOffset(11, 10);
+      fire.setDepth(DEPTH.FIRE);
+    });
+
+    // Collectible Ferns (🌿 emoji + invisible physics zone)
+    this.coins = this.add.group(); // reuse 'coins' name so collectCoin overlap still works
+    // We'll use a separate static physics group for hitboxes
+    this.coinBodies = this.physics.add.staticGroup();
+    [[220,280],[260,280],[380,210],[900,260],[940,260],[1100,200],[1360,190],[1540,260],
+     [1720,170],[1880,240],[2220,280],[2380,210],[2540,270],[2720,170],[2920,230],[3060,170],[3100,170],[3140,170]
+    ].forEach(([cx,cy])=>{
+      // Invisible physics hitbox
+      const body = this.coinBodies.create(cx, cy, null);
+      body.setVisible(false).setSize(26,26).refreshBody();
+      // Emoji text label — store ref on body so we can destroy it on collect
+      const emoji = this.add.text(cx, cy, '🌿', { fontSize:'22px' }).setOrigin(0.5, 0.5).setDepth(DEPTH.FERN_ITEM);
+      body._emoji = emoji;
+      // Gentle bob tween
+      this.tweens.add({ targets:emoji, y:cy-6, duration:900+Math.random()*300, yoyo:true, repeat:-1, ease:'Sine.easeInOut' });
+    });
+
+    // Ferns — depth 3 (behind fire at 6), skip positions within 24px of a fire
+    const fireSet = new Set(FIRE_POSITIONS);
+    [150,330,490,680,820,1020,1160,1310,1480,1650,1810,1970,2140,2310,2490,2660,2820,2990,3120]
+    .forEach(fx=>{
+      // Skip if a fire is within 28px of this fern position
+      const tooClose = FIRE_POSITIONS.some(fp => Math.abs(fp - fx) < 28);
+      if (tooClose) return;
+      this.add.image(fx, groundY-2, 'fern').setOrigin(0.5,1).setDepth(DEPTH.FERN_DECO);
+      if (Math.random() > .5)
+        this.add.image(fx+20, groundY-2, 'fern').setOrigin(0.5,1).setDepth(DEPTH.FERN_DECO).setFlipX(true).setScale(0.8);
+    });
+
+    // Flag
+    const fg=this.make.graphics({x:0,y:0,add:false});
+    fg.fillStyle(0xffffff); fg.fillRect(0,0,4,80);
+    fg.fillStyle(0x00ff88); fg.fillTriangle(4,0,4,30,34,15);
+    fg.generateTexture('flag',36,80); fg.destroy();
+    this.flag=this.physics.add.staticImage(WORLD_W-60,groundY-80,'flag').setOrigin(0,0);
+    this.flag.refreshBody();
+
+    // Colliders
+    this.physics.add.collider(this.player,this.platforms,()=>{ this.jumpsLeft=2; });
+    this.physics.add.collider(this.fires,this.platforms);
+    this.physics.add.overlap(this.player,this.fires,        ()=>this.hitDamage(), null, this);
+    this.physics.add.overlap(this.player,this.swamp,        ()=>this.hitDamage(), null, this);
+    this.physics.add.overlap(this.player,this.swampHazards, ()=>this.hitDamage(), null, this);
+    this.physics.add.overlap(this.player,this.coinBodies,   this.collectCoin,     null, this);
+    this.physics.add.overlap(this.player,this.flag,         this.reachGoal,       null, this);
+
+    this.cameras.main.startFollow(this.player,true,0.1,0.1);
+
+    // Input
+    this.cursors  = this.input.keyboard.createCursorKeys();
+    this.wasd     = this.input.keyboard.addKeys('W,A,S,D');
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    // Overlay text (fixed to camera)
+    this.msgText = this.add.text(W/2,H/2,'',{
+      fontFamily:'"Press Start 2P"', fontSize:'20px', fill:'#fff',
+      stroke:'#000', strokeThickness:6, align:'center'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH.OVERLAY).setVisible(false);
+    this.subText = this.add.text(W/2,H/2+44,'',{
+      fontFamily:'"Press Start 2P"', fontSize:'10px', fill:'#FFD700',
+      stroke:'#000', strokeThickness:4, align:'center'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH.OVERLAY).setVisible(false);
+
+    // Swamp bubble ambience
+    this.time.addEvent({ delay:1400, loop:true, callback:()=>{
+      if (this.gameOver||this.levelComplete) return;
+      const bx=this.cameras.main.scrollX+Phaser.Math.Between(0,W);
+      const b=this.add.graphics().setDepth(DEPTH.SWAMP);
+      b.fillStyle(0x5a9a28,0.8); b.fillCircle(bx,H-10,4);
+      this.tweens.add({ targets:b, y:b.y-14, alpha:0, duration:900, onComplete:()=>b.destroy() });
+    }});
+
+    updateUI(this.score,this.lives,this.level);
+  }
+
+  hitDamage() {
+    if (this.isInvincible||this.gameOver) return;
+    this.lives--;
+    updateUI(this.score,this.lives,this.level);
+    if (this.lives<=0) { this.doGameOver(); return; }
+    this.isInvincible=true;
+    this.player.setTint(0x00cc55);
+    this.cameras.main.shake(200,0.015);
+    this.tweens.add({ targets:this.player, alpha:0, duration:100, yoyo:true, repeat:5, onComplete:()=>{
+      this.player.clearTint(); this.player.setAlpha(1);
+      this.player.setPosition(80,BASE_H-80); this.player.setVelocity(0,0);
+      this.isInvincible=false;
+    }});
+  }
+
+  collectCoin(player, coin) {
+    if (coin._emoji) { coin._emoji.destroy(); }
+    coin.destroy();
+    this.score+=10; updateUI(this.score,this.lives,this.level);
+    const pop=this.add.text(coin.x,coin.y-10,'+10 🌿',{
+      fontFamily:'"Press Start 2P"',fontSize:'8px',fill:'#7ec83a',stroke:'#000',strokeThickness:3
+    }).setDepth(DEPTH.SCORE_POP);
+    this.tweens.add({ targets:pop, y:pop.y-30, alpha:0, duration:600, onComplete:()=>pop.destroy() });
+  }
+
+  reachGoal() {
+    if (this.levelComplete||this.gameOver) return;
+    this.levelComplete=true; this.score+=100; updateUI(this.score,this.lives,this.level);
+    this.player.setVelocity(0,0); this.player.body.moves=false;
+    this.showMessage('LEVEL CLEAR!','TAP OR PRESS R TO REPLAY');
+    this.input.once('pointerup',()=>this.scene.restart());
+    this.input.keyboard.once('keydown-R',()=>this.scene.restart());
+  }
+
+  doGameOver() {
+    this.gameOver=true;
+    this.player.setTint(0x336600); this.player.setVelocity(0,-300);
+    this.cameras.main.shake(400,0.02);
+    this.time.delayedCall(700,()=>{
+      this.showMessage('GAME OVER','TAP OR PRESS R TO RETRY');
+      this.input.once('pointerup',()=>this.scene.restart());
+      this.input.keyboard.once('keydown-R',()=>this.scene.restart());
+    });
+  }
+
+  showMessage(main,sub) {
+    this.msgText.setText(main).setVisible(true);
+    this.subText.setText(sub).setVisible(true);
+  }
+
+  update() {
+    if (this.gameOver||this.levelComplete) return;
+
+    const left  = this.cursors.left.isDown  || this.wasd.A.isDown || touch.left;
+    const right = this.cursors.right.isDown || this.wasd.D.isDown || touch.right;
+    const jumpNow = Phaser.Input.Keyboard.JustDown(this.cursors.up)
+      || Phaser.Input.Keyboard.JustDown(this.wasd.W)
+      || Phaser.Input.Keyboard.JustDown(this.spaceKey)
+      || jumpJustPressed();
+
+    if (left)       { this.player.setVelocityX(-200); this.player.setFlipX(true);  this.player.play('walk',true); }
+    else if (right) { this.player.setVelocityX(200);  this.player.setFlipX(false); this.player.play('walk',true); }
+    else            { this.player.setVelocityX(0);    this.player.play('idle',true); }
+
+    if (jumpNow && this.jumpsLeft>0) {
+      this.player.setVelocityY(-420); this.jumpsLeft--;
+      if (this.jumpsLeft===0) {
+        for (let i=0;i<6;i++) {
+          const s=this.add.image(this.player.x+Phaser.Math.Between(-10,10),this.player.y+10,'spark').setTint(0x88ffaa).setDepth(DEPTH.FIRE);
+          this.tweens.add({ targets:s, y:s.y+20, alpha:0, duration:300, onComplete:()=>s.destroy() });
+        }
+      }
+    }
+
+    // Fell off world into swamp
+    if (this.player.y > BASE_H + 20) {
+      this.hitDamage();
+      this.player.setPosition(80, BASE_H - 80); this.player.setVelocity(0, 0);
+    }
+  }
+}
+
+// ── MENU SCENE ────────────────────────────────────────────────────────────────
+class MenuScene extends Phaser.Scene {
+  constructor() { super('MenuScene'); }
+  create() {
+    const W=BASE_W, H=BASE_H;
+    makeMoonTexture(this);
+    const g=this.add.graphics();
+    for (let i=0;i<H;i++) {
+      const t=i/H;
+      g.fillStyle(Phaser.Display.Color.GetColor(Math.round(20+t*30),Math.round(35+t*55),Math.round(25+t*20)));
+      g.fillRect(0,i,W,1);
+    }
+    g.fillStyle(0x0d2010);
+    for (let x=0;x<W;x+=55) {
+      const h=100+Math.sin(x*.06)*35;
+      g.fillRect(x+18,H-h,8,h);
+      g.fillTriangle(x+22,H-h-55,x-2,H-h+5,x+46,H-h+5);
+      g.fillTriangle(x+22,H-h-78,x+4,H-h-20,x+40,H-h-20);
+    }
+    g.fillStyle(0xccffaa);
+    for (let i=0;i<35;i++) g.fillRect(Math.random()*W,H*.15+Math.random()*H*.6,2,2);
+    g.fillStyle(0x2d4a1a); g.fillRect(0,H-22,W,22);
+    g.fillStyle(0x5a8a2a);
+    for (let i=0;i<15;i++) g.fillRect(Math.random()*W,H-20+Math.random()*10,30+Math.random()*60,6);
+
+    // Moon in menu sky
+    const menuMoon = this.add.image(660, 72, 'moon').setDepth(1);
+    this.tweens.add({ targets: menuMoon, alpha: 0.75, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+    this.add.text(W/2, 75, '🌿 EMBER & MOSS 🔥', {
+      fontFamily:'"Press Start 2P"', fontSize:'28px', fill:'#a8ff5a',
+      stroke:'#1a4a00', strokeThickness:10
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 145, 'DODGE THE FLAMES!', {
+      fontFamily:'"Press Start 2P"', fontSize:'13px', fill:'#ffffff',
+      stroke:'#1a4a00', strokeThickness:6
+    }).setOrigin(0.5);
+
+    // Divider
+    const dg = this.add.graphics();
+    dg.fillStyle(0x3a8a1e); dg.fillRect(W/2-120, 168, 240, 2);
+
+    this.add.text(W/2, 205, '◀  ▶   move', {
+      fontFamily:'"Press Start 2P"', fontSize:'10px', fill:'#ccffaa',
+      stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5);
+    this.add.text(W/2, 232, '🌿   jump  (double jump!)', {
+      fontFamily:'"Press Start 2P"', fontSize:'10px', fill:'#ccffaa',
+      stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5);
+    this.add.text(W/2, 262, 'collect 🌿  avoid 🔥  swamp', {
+      fontFamily:'"Press Start 2P"', fontSize:'9px', fill:'#aaddaa',
+      stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5);
+    this.add.text(W/2, 290, 'reach the green flag to win!', {
+      fontFamily:'"Press Start 2P"', fontSize:'9px', fill:'#aaddaa',
+      stroke:'#000', strokeThickness:4
+    }).setOrigin(0.5);
+
+    const btn = this.add.text(W/2, 370, '▶  TAP TO START', {
+      fontFamily:'"Press Start 2P"', fontSize:'14px', fill:'#000',
+      stroke:'#1a5a00', strokeThickness:4,
+      backgroundColor:'#7ec83a', padding:{x:22,y:14}
+    }).setOrigin(0.5).setInteractive({ useHandCursor:true });
+    this.tweens.add({ targets:btn, alpha:0.5, duration:650, yoyo:true, repeat:-1 });
+
+    const go = () => this.scene.start('GameScene');
+    btn.on('pointerup', go);
+    this.input.keyboard.once('keydown-SPACE', go);
+    this.input.keyboard.once('keydown-ENTER', go);
+  }
+}
+
+// ── Touch device detection ────────────────────────────────────────────────────
+// Use pointer capability, not screen size — a 4K touchscreen should show controls;
+// a phone-sized desktop window should not.
+(function detectTouch() {
+  const hasTouch = navigator.maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches;
+  if (hasTouch) document.body.classList.add('is-touch');
+  // Also watch for pointer type changes (e.g. detachable keyboard tablets)
+  window.matchMedia('(pointer: coarse)').addEventListener('change', e => {
+    document.body.classList.toggle('is-touch', e.matches);
+  });
+})();
+
+// ── UI updater ────────────────────────────────────────────────────────────────
+function updateUI(score,lives,level) {
+  scoreEl.textContent=String(score).padStart(5,'0');
+  livesEl.textContent=lives;
+  levelEl.textContent=level;
+}
+
+// ── Phaser launch ─────────────────────────────────────────────────────────────
+const game = new Phaser.Game({
+  type: Phaser.AUTO,
+  width: BASE_W,
+  height: BASE_H,
+  parent: 'game-wrapper',
+  backgroundColor: '#060e04',
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: BASE_W,
+    height: BASE_H,
+  },
+  physics: {
+    default: 'arcade',
+    arcade: { gravity:{ y:600 }, debug:false }
+  },
+  scene: [MenuScene, GameScene]
+});
+
+window.addEventListener('resize', () => game.scale.refresh());
+</script>
+</body>
+</html>

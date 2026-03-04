@@ -1,0 +1,22 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.makeMoonTexture = exports.makeSparkTexture = exports.makeFernTexture = exports.makeSwampTexture = exports.makeSkyTexture = exports.makePlatformTexture = exports.makeGroundTexture = exports.FIRE_H = exports.FIRE_W = exports.makeFireTextures = exports.makePlayerTextures = void 0;
+// src/models/index.ts
+var PlayerModel_1 = require("./PlayerModel");
+Object.defineProperty(exports, "makePlayerTextures", { enumerable: true, get: function () { return PlayerModel_1.makePlayerTextures; } });
+var FireModel_1 = require("./FireModel");
+Object.defineProperty(exports, "makeFireTextures", { enumerable: true, get: function () { return FireModel_1.makeFireTextures; } });
+Object.defineProperty(exports, "FIRE_W", { enumerable: true, get: function () { return FireModel_1.FIRE_W; } });
+Object.defineProperty(exports, "FIRE_H", { enumerable: true, get: function () { return FireModel_1.FIRE_H; } });
+var TerrainModel_1 = require("./TerrainModel");
+Object.defineProperty(exports, "makeGroundTexture", { enumerable: true, get: function () { return TerrainModel_1.makeGroundTexture; } });
+Object.defineProperty(exports, "makePlatformTexture", { enumerable: true, get: function () { return TerrainModel_1.makePlatformTexture; } });
+var SkyModel_1 = require("./SkyModel");
+Object.defineProperty(exports, "makeSkyTexture", { enumerable: true, get: function () { return SkyModel_1.makeSkyTexture; } });
+var SwampModel_1 = require("./SwampModel");
+Object.defineProperty(exports, "makeSwampTexture", { enumerable: true, get: function () { return SwampModel_1.makeSwampTexture; } });
+var FernModel_1 = require("./FernModel");
+Object.defineProperty(exports, "makeFernTexture", { enumerable: true, get: function () { return FernModel_1.makeFernTexture; } });
+Object.defineProperty(exports, "makeSparkTexture", { enumerable: true, get: function () { return FernModel_1.makeSparkTexture; } });
+var MoonModel_1 = require("./MoonModel");
+Object.defineProperty(exports, "makeMoonTexture", { enumerable: true, get: function () { return MoonModel_1.makeMoonTexture; } });
