@@ -1,0 +1,5 @@
+{
+  "watch": ["./dist", "./src", "./model.js"],
+  "ext": "html,js",
+  "exec": "http-server -p 8080"
+}
