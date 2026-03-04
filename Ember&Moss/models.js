@@ -3,7 +3,7 @@
 // Loaded by platformer.html before the game script.
 
 // ──────────────────────────────────────────────────────────────────────
-// constants.ts
+// dist/constants.js
 // ──────────────────────────────────────────────────────────────────────
 // src/constants.ts
 // Shared constants for FireJump — depth layers, world layout, spawn positions.
@@ -69,43 +69,179 @@ const COLLECTIBLE_POSITIONS = [
 ];
 
 // ──────────────────────────────────────────────────────────────────────
-// models/PlayerModel.ts
+// models/SkyModel.js
 // ──────────────────────────────────────────────────────────────────────
-// src/models/PlayerModel.ts
-// Pixel-art player sprite — 4 walk-cycle frames (24 × 28 px each).
-function makePlayerTextures(scene) {
-    for (let f = 0; f < 4; f++) {
-        const g = scene.make.graphics({ x: 0, y: 0, add: false });
-        g.fillStyle(0xf7e7ce);
-        g.fillRect(4, 12, 16, 14); // blue body
-        g.fillStyle(0xf4a261);
-        g.fillRect(5, 2, 14, 12); // skin head
-        g.fillStyle(0xffffff);
-        g.fillRect(7, 5, 4, 3); // eye white L
-        g.fillRect(13, 5, 4, 3); // eye white R
-        g.fillStyle(0x1a1a2e);
-        g.fillRect(8 + (f % 2), 6, 2, 2); // pupil L (shifts for blink)
-        g.fillRect(14, 6, 2, 2); // pupil R
-        g.fillStyle(0x6d2b00);
-        g.fillRect(5, 2, 14, 4); // hair
-        g.fillRect(4, 24, 7, 4); // shoe L
-        g.fillRect(13, 24, 7, 4); // shoe R
-        g.fillStyle(0xf4a261); // arms
-        if (f < 2) {
-            g.fillRect(1, 13, 4, 8);
-            g.fillRect(19, 13, 4, 8);
-        } // arms up
-        else {
-            g.fillRect(1, 16, 4, 8);
-            g.fillRect(19, 16, 4, 8);
-        } // arms down
-        g.generateTexture(`player_${f}`, 24, 28);
-        g.destroy();
+// src/models/SkyModel.ts
+// Forest night sky background (800 × 450 px).
+// Gradient sky + two layers of tree silhouettes + firefly dots.
+function makeSkyTexture(scene) {
+    const W = 800, H = 450;
+    const sky = scene.make.graphics({ x: 0, y: 0, add: false });
+    // Sky gradient — dark teal at top → misty grey-green at bottom
+    for (let i = 0; i < H; i++) {
+        const t = i / H;
+        sky.fillStyle(Phaser.Display.Color.GetColor(Math.round(20 + t * 30), Math.round(35 + t * 55), Math.round(25 + t * 20)));
+        sky.fillRect(0, i, W, 1);
     }
+    // Far silhouette trees (very dark)
+    sky.fillStyle(0x0d2010);
+    for (let x = 0; x < W; x += 38) {
+        const h = 80 + Math.sin(x * 0.07) * 30 + Math.random() * 20;
+        const tw = 28 + Math.random() * 18;
+        sky.fillRect(x + tw / 2 - 3, H - h - 10, 6, 20);
+        sky.fillTriangle(x + tw / 2, H - h - 60, x, H - h - 10, x + tw, H - h - 10);
+        sky.fillTriangle(x + tw / 2, H - h - 80, x + 4, H - h - 30, x + tw - 4, H - h - 30);
+    }
+    // Mid silhouette trees (slightly lighter)
+    sky.fillStyle(0x163320);
+    for (let x = -20; x < W; x += 55) {
+        const h = 100 + Math.sin(x * 0.05 + 1) * 40;
+        const tw = 40;
+        sky.fillRect(x + tw / 2 - 4, H - h + 20, 8, 30);
+        sky.fillTriangle(x + tw / 2, H - h - 40, x - 5, H - h + 20, x + tw + 5, H - h + 20);
+        sky.fillTriangle(x + tw / 2, H - h - 65, x, H - h - 10, x + tw, H - h - 10);
+        sky.fillTriangle(x + tw / 2, H - h - 85, x + 6, H - h - 30, x + tw - 6, H - h - 30);
+    }
+    // Firefly / light-mote dots
+    for (let i = 0; i < 40; i++) {
+        sky.fillStyle(0xccffaa, 0.7);
+        sky.fillRect(Math.random() * W, H * 0.2 + Math.random() * H * 0.55, 2, 2);
+    }
+    sky.generateTexture('sky', W, H);
+    sky.destroy();
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// models/FireModel.ts
+// models/MoonModel.js
+// ──────────────────────────────────────────────────────────────────────
+// src/models/MoonModel.ts
+// Waxing half moon — 50% illumination, right half lit (60 × 60 px).
+// Idempotent: skips generation if texture already exists.
+function makeMoonTexture(scene) {
+    if (scene.textures.exists('moon'))
+        return;
+    const R = 22;
+    const cx = R + 8;
+    const cy = R + 8;
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    // Soft outer glow halos
+    g.fillStyle(0xfffbe8, 0.12);
+    g.fillCircle(cx, cy, R + 8);
+    g.fillStyle(0xfffbe8, 0.10);
+    g.fillCircle(cx, cy, R + 6);
+    // Dark (unlit) side disc
+    g.fillStyle(0x3a4a30);
+    g.fillCircle(cx, cy, R);
+    // Lit right half — row-by-row fill starting from the vertical centre axis
+    g.fillStyle(0xf5e8c0);
+    for (let dy = -R; dy <= R; dy++) {
+        const hw = Math.sqrt(R * R - dy * dy);
+        g.fillRect(cx, cy + dy, hw, 1); // x >= cx → right half only
+    }
+    // Craters on the lit side
+    g.fillStyle(0xd4c090, 0.5);
+    g.fillCircle(cx + 8, cy - 5, 3);
+    g.fillCircle(cx + 12, cy + 8, 2);
+    g.fillCircle(cx + 5, cy + 11, 2);
+    // Thin bright limb outline
+    g.lineStyle(1, 0xfffbe8, 0.6);
+    g.strokeCircle(cx, cy, R);
+    g.generateTexture('moon', (R + 8) * 2, (R + 8) * 2);
+    g.destroy();
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// models/TerrainModel.js
+// ──────────────────────────────────────────────────────────────────────
+// src/models/TerrainModel.ts
+// Ground tile (32 × 40 px) and floating platform tile (32 × 32 px).
+function makeGroundTexture(scene) {
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0x7ec850);
+    g.fillRect(0, 0, 32, 8); // grass top
+    g.fillStyle(0xa0522d);
+    g.fillRect(0, 8, 32, 32); // dirt body
+    g.fillStyle(0x8b4513);
+    g.fillRect(8, 12, 5, 5); // pebble 1
+    g.fillRect(22, 20, 4, 4); // pebble 2
+    g.generateTexture('ground', 32, 40);
+    g.destroy();
+}
+function makePlatformTexture(scene) {
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0x7ec850);
+    g.fillRect(0, 0, 32, 8); // grass top
+    g.fillStyle(0xa0522d);
+    g.fillRect(0, 8, 32, 24); // dirt body
+    g.fillStyle(0x6daa3f);
+    g.fillRect(4, 2, 6, 4); // grass tuft L
+    g.fillRect(18, 1, 8, 5); // grass tuft R
+    g.fillStyle(0x8b4513);
+    g.fillRect(6, 14, 4, 4); // dirt detail L
+    g.fillRect(20, 18, 5, 4); // dirt detail R
+    g.generateTexture('platform', 32, 32);
+    g.destroy();
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// models/SwampModel.js
+// ──────────────────────────────────────────────────────────────────────
+// src/models/SwampModel.ts
+// Swamp floor texture (3200 × 28 px).
+// Murky water base with dark patches, algae streaks, and slime highlights.
+function makeSwampTexture(scene) {
+    const SW = 3200;
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    // Murky water base
+    g.fillStyle(0x2d4a1a);
+    g.fillRect(0, 0, SW, 28);
+    // Dark deep patches
+    g.fillStyle(0x1a2e0e);
+    for (let i = 0; i < 80; i++)
+        g.fillRect(Math.random() * SW, Math.random() * 16, 30 + Math.random() * 80, 10 + Math.random() * 10);
+    // Algae streaks
+    g.fillStyle(0x5a8a2a);
+    for (let i = 0; i < 60; i++)
+        g.fillRect(Math.random() * SW, Math.random() * 12, 20 + Math.random() * 50, 6 + Math.random() * 8);
+    // Bright slime highlights
+    g.fillStyle(0x7ec83a);
+    for (let i = 0; i < 40; i++)
+        g.fillRect(Math.random() * SW, Math.random() * 8, 6 + Math.random() * 20, 3 + Math.random() * 4);
+    g.generateTexture('lava', SW, 28);
+    g.destroy();
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// models/FernModel.js
+// ──────────────────────────────────────────────────────────────────────
+// src/models/FernModel.ts
+// Decorative ground fern (28 × 30 px) and double-jump spark particle (4 × 4 px).
+function makeFernTexture(scene) {
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    // Dark outer fronds
+    g.fillStyle(0x2a6614);
+    g.fillTriangle(8, 28, 0, 10, 20, 18);
+    g.fillTriangle(8, 28, 16, 6, 26, 16);
+    // Lighter inner fronds
+    g.fillStyle(0x3a8a1e);
+    g.fillTriangle(8, 28, 0, 14, 18, 22);
+    g.fillTriangle(8, 28, 14, 8, 24, 20);
+    // Stem
+    g.fillStyle(0x1e4a0c);
+    g.fillRect(7, 20, 2, 8);
+    g.generateTexture('fern', 28, 30);
+    g.destroy();
+}
+function makeSparkTexture(scene) {
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0xccffaa);
+    g.fillRect(0, 0, 4, 4);
+    g.generateTexture('spark', 4, 4);
+    g.destroy();
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// models/FireModel.js
 // ──────────────────────────────────────────────────────────────────────
 // src/models/FireModel.ts
 // Realistic multi-layer flame — 8 animation frames (40 × 52 px each).
@@ -168,174 +304,38 @@ function makeFireTextures(scene) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// models/TerrainModel.ts
+// models/PlayerModel.js
 // ──────────────────────────────────────────────────────────────────────
-// src/models/TerrainModel.ts
-// Ground tile (32 × 40 px) and floating platform tile (32 × 32 px).
-function makeGroundTexture(scene) {
-    const g = scene.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0x7ec850);
-    g.fillRect(0, 0, 32, 8); // grass top
-    g.fillStyle(0xa0522d);
-    g.fillRect(0, 8, 32, 32); // dirt body
-    g.fillStyle(0x8b4513);
-    g.fillRect(8, 12, 5, 5); // pebble 1
-    g.fillRect(22, 20, 4, 4); // pebble 2
-    g.generateTexture('ground', 32, 40);
-    g.destroy();
-}
-function makePlatformTexture(scene) {
-    const g = scene.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0x7ec850);
-    g.fillRect(0, 0, 32, 8); // grass top
-    g.fillStyle(0xa0522d);
-    g.fillRect(0, 8, 32, 24); // dirt body
-    g.fillStyle(0x6daa3f);
-    g.fillRect(4, 2, 6, 4); // grass tuft L
-    g.fillRect(18, 1, 8, 5); // grass tuft R
-    g.fillStyle(0x8b4513);
-    g.fillRect(6, 14, 4, 4); // dirt detail L
-    g.fillRect(20, 18, 5, 4); // dirt detail R
-    g.generateTexture('platform', 32, 32);
-    g.destroy();
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// models/SkyModel.ts
-// ──────────────────────────────────────────────────────────────────────
-// src/models/SkyModel.ts
-// Forest night sky background (800 × 450 px).
-// Gradient sky + two layers of tree silhouettes + firefly dots.
-function makeSkyTexture(scene) {
-    const W = 800, H = 450;
-    const sky = scene.make.graphics({ x: 0, y: 0, add: false });
-    // Sky gradient — dark teal at top → misty grey-green at bottom
-    for (let i = 0; i < H; i++) {
-        const t = i / H;
-        sky.fillStyle(Phaser.Display.Color.GetColor(Math.round(20 + t * 30), Math.round(35 + t * 55), Math.round(25 + t * 20)));
-        sky.fillRect(0, i, W, 1);
+// src/models/PlayerModel.ts
+// Pixel-art player sprite — 4 walk-cycle frames (24 × 28 px each).
+function makePlayerTextures(scene) {
+    for (let f = 0; f < 4; f++) {
+        const g = scene.make.graphics({ x: 0, y: 0, add: false });
+        g.fillStyle(0xf7e7ce);
+        g.fillRect(4, 12, 16, 14); // blue body
+        g.fillStyle(0xf4a261);
+        g.fillRect(5, 2, 14, 12); // skin head
+        g.fillStyle(0xffffff);
+        g.fillRect(7, 5, 4, 3); // eye white L
+        g.fillRect(13, 5, 4, 3); // eye white R
+        g.fillStyle(0x1a1a2e);
+        g.fillRect(8 + (f % 2), 6, 2, 2); // pupil L (shifts for blink)
+        g.fillRect(14, 6, 2, 2); // pupil R
+        g.fillStyle(0x6d2b00);
+        g.fillRect(5, 2, 14, 4); // hair
+        g.fillRect(4, 24, 7, 4); // shoe L
+        g.fillRect(13, 24, 7, 4); // shoe R
+        g.fillStyle(0xf4a261); // arms
+        if (f < 2) {
+            g.fillRect(1, 13, 4, 8);
+            g.fillRect(19, 13, 4, 8);
+        } // arms up
+        else {
+            g.fillRect(1, 16, 4, 8);
+            g.fillRect(19, 16, 4, 8);
+        } // arms down
+        g.generateTexture(`player_${f}`, 24, 28);
+        g.destroy();
     }
-    // Far silhouette trees (very dark)
-    sky.fillStyle(0x0d2010);
-    for (let x = 0; x < W; x += 38) {
-        const h = 80 + Math.sin(x * 0.07) * 30 + Math.random() * 20;
-        const tw = 28 + Math.random() * 18;
-        sky.fillRect(x + tw / 2 - 3, H - h - 10, 6, 20);
-        sky.fillTriangle(x + tw / 2, H - h - 60, x, H - h - 10, x + tw, H - h - 10);
-        sky.fillTriangle(x + tw / 2, H - h - 80, x + 4, H - h - 30, x + tw - 4, H - h - 30);
-    }
-    // Mid silhouette trees (slightly lighter)
-    sky.fillStyle(0x163320);
-    for (let x = -20; x < W; x += 55) {
-        const h = 100 + Math.sin(x * 0.05 + 1) * 40;
-        const tw = 40;
-        sky.fillRect(x + tw / 2 - 4, H - h + 20, 8, 30);
-        sky.fillTriangle(x + tw / 2, H - h - 40, x - 5, H - h + 20, x + tw + 5, H - h + 20);
-        sky.fillTriangle(x + tw / 2, H - h - 65, x, H - h - 10, x + tw, H - h - 10);
-        sky.fillTriangle(x + tw / 2, H - h - 85, x + 6, H - h - 30, x + tw - 6, H - h - 30);
-    }
-    // Firefly / light-mote dots
-    for (let i = 0; i < 40; i++) {
-        sky.fillStyle(0xccffaa, 0.7);
-        sky.fillRect(Math.random() * W, H * 0.2 + Math.random() * H * 0.55, 2, 2);
-    }
-    sky.generateTexture('sky', W, H);
-    sky.destroy();
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// models/SwampModel.ts
-// ──────────────────────────────────────────────────────────────────────
-// src/models/SwampModel.ts
-// Swamp floor texture (3200 × 28 px).
-// Murky water base with dark patches, algae streaks, and slime highlights.
-function makeSwampTexture(scene) {
-    const SW = 3200;
-    const g = scene.make.graphics({ x: 0, y: 0, add: false });
-    // Murky water base
-    g.fillStyle(0x2d4a1a);
-    g.fillRect(0, 0, SW, 28);
-    // Dark deep patches
-    g.fillStyle(0x1a2e0e);
-    for (let i = 0; i < 80; i++)
-        g.fillRect(Math.random() * SW, Math.random() * 16, 30 + Math.random() * 80, 10 + Math.random() * 10);
-    // Algae streaks
-    g.fillStyle(0x5a8a2a);
-    for (let i = 0; i < 60; i++)
-        g.fillRect(Math.random() * SW, Math.random() * 12, 20 + Math.random() * 50, 6 + Math.random() * 8);
-    // Bright slime highlights
-    g.fillStyle(0x7ec83a);
-    for (let i = 0; i < 40; i++)
-        g.fillRect(Math.random() * SW, Math.random() * 8, 6 + Math.random() * 20, 3 + Math.random() * 4);
-    g.generateTexture('lava', SW, 28);
-    g.destroy();
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// models/FernModel.ts
-// ──────────────────────────────────────────────────────────────────────
-// src/models/FernModel.ts
-// Decorative ground fern (28 × 30 px) and double-jump spark particle (4 × 4 px).
-function makeFernTexture(scene) {
-    const g = scene.make.graphics({ x: 0, y: 0, add: false });
-    // Dark outer fronds
-    g.fillStyle(0x2a6614);
-    g.fillTriangle(8, 28, 0, 10, 20, 18);
-    g.fillTriangle(8, 28, 16, 6, 26, 16);
-    // Lighter inner fronds
-    g.fillStyle(0x3a8a1e);
-    g.fillTriangle(8, 28, 0, 14, 18, 22);
-    g.fillTriangle(8, 28, 14, 8, 24, 20);
-    // Stem
-    g.fillStyle(0x1e4a0c);
-    g.fillRect(7, 20, 2, 8);
-    g.generateTexture('fern', 28, 30);
-    g.destroy();
-}
-function makeSparkTexture(scene) {
-    const g = scene.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0xccffaa);
-    g.fillRect(0, 0, 4, 4);
-    g.generateTexture('spark', 4, 4);
-    g.destroy();
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// models/MoonModel.ts
-// ──────────────────────────────────────────────────────────────────────
-// src/models/MoonModel.ts
-// Waxing half moon — 50% illumination, right half lit (60 × 60 px).
-// Idempotent: skips generation if texture already exists.
-function makeMoonTexture(scene) {
-    if (scene.textures.exists('moon'))
-        return;
-    const R = 22;
-    const cx = R + 8;
-    const cy = R + 8;
-    const g = scene.make.graphics({ x: 0, y: 0, add: false });
-    // Soft outer glow halos
-    g.fillStyle(0xfffbe8, 0.12);
-    g.fillCircle(cx, cy, R + 8);
-    g.fillStyle(0xfffbe8, 0.10);
-    g.fillCircle(cx, cy, R + 6);
-    // Dark (unlit) side disc
-    g.fillStyle(0x3a4a30);
-    g.fillCircle(cx, cy, R);
-    // Lit right half — row-by-row fill starting from the vertical centre axis
-    g.fillStyle(0xf5e8c0);
-    for (let dy = -R; dy <= R; dy++) {
-        const hw = Math.sqrt(R * R - dy * dy);
-        g.fillRect(cx, cy + dy, hw, 1); // x >= cx → right half only
-    }
-    // Craters on the lit side
-    g.fillStyle(0xd4c090, 0.5);
-    g.fillCircle(cx + 8, cy - 5, 3);
-    g.fillCircle(cx + 12, cy + 8, 2);
-    g.fillCircle(cx + 5, cy + 11, 2);
-    // Thin bright limb outline
-    g.lineStyle(1, 0xfffbe8, 0.6);
-    g.strokeCircle(cx, cy, R);
-    g.generateTexture('moon', (R + 8) * 2, (R + 8) * 2);
-    g.destroy();
 }
 
